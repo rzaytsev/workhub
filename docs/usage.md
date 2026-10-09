@@ -12,9 +12,14 @@ the files. Mixed formats require separate task folders.
 If the task folder is missing, Workhub asks before creating the empty
 folder and connecting it. Going back or closing the prompt creates nothing.
 Existing task folders are preserved; example tasks are added through `$todo init`.
-**Browse workspace** and **Browse task folder** request a local directory picker
-from compatible Codex hosts. Canceling changes no connection or files. Manual
-path entry remains available if the host cannot provide a local folder path.
+**Browse workspace** and **Browse task folder** open the native system folder
+chooser on macOS. Other platforms use directory forms from compatible Codex
+hosts. Canceling changes no connection or files. The path fields and Close
+button remain usable while Browse is waiting, and **Cancel browse** stops the
+request. Editing a path or closing/submitting the form also cancels Browse;
+late replies cannot replace your input. Requests expire after two minutes with
+a message to enter the path manually or try again. Manual path entry remains
+available if the picker cannot open or the host cannot return a local path.
 New connections default to flat task files in `todo/`, with `todo/archive/`
 created on the first approved archive. A custom task folder uses its own
 `archive/` child; existing nested `todo/tasks/` uses sibling `todo/archive/`.

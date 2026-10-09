@@ -29,7 +29,7 @@ const icon = {
 const server = new McpServer({
   name: "workhub",
   title: "Workhub",
-  version: "0.9.0",
+  version: "0.9.1",
   icons: [icon],
 });
 const extensions = new OpenAIExtensions(server);
@@ -83,7 +83,7 @@ const titles: Record<ToolName, string> = {
 };
 const descriptions: Record<ToolName, string> = {
   todo_choose_directory:
-    "Ask the user to choose a local folder with the host's directory picker. Returns its path and a suggested workspace root; cancellation returns no path. Does not connect or write files. Requires host support for OpenAI directory form fields; manual paths remain supported.",
+    "Ask the user to choose a local folder. Uses the native system dialog on macOS and OpenAI directory form fields on other compatible hosts. Returns its path and a suggested workspace root; cancellation returns no path. Does not connect or write files. Picker requests are cancellable and expire after two minutes; manual paths remain supported.",
   todo_set_accent_color:
     "Set the Workhub accent color across workspaces. Persists in the local plugin registry; does not change task files. Use default to restore the original purple accent.",
   todo_open:
@@ -137,10 +137,13 @@ for (const name of Object.keys(schemas) as ToolName[]) {
         } satisfies OpenAIUiToolMetadata,
       },
     },
-    async (args: Record<string, unknown>): Promise<CallToolResult> => {
+    async (
+      args: Record<string, unknown>,
+      extra: { signal: AbortSignal },
+    ): Promise<CallToolResult> => {
       try {
         const data = await execute(store, name, args, () =>
-          chooseDirectory(extensions.elicitInput),
+          chooseDirectory(extensions.elicitInput, { signal: extra.signal }),
         );
         return {
           content: [

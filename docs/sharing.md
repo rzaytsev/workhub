@@ -21,6 +21,15 @@ GitHub Settings > Emails); a generic noreply address can attribute commits to
 another account. Do not publish local registries, task files,
 private configuration, real-workspace screenshots, credentials, or machine paths.
 
+README screenshots must contain only fictional demo data. Review the visible
+content, remove text and EXIF metadata without changing the pixels, and record
+each approved PNG's path and SHA-256 in `docs/screenshots/reviewed.json`.
+The publication check accepts only those exact reviewed files and rejects
+changed images, embedded metadata, malformed PNG chunks, and other binaries.
+The staged check reads both the manifest and images from the Git index.
+Local `todo/` files remain runtime data and must stay outside the release;
+use an isolated checkout for the whole-directory check when demo tasks exist.
+
 Update committed plugin artifacts and dependency notices with the build. Confirm
 that a relocated plugin starts without access to this checkout's dependencies.
 The CI workflow repeats those checks using temporary fixtures.
@@ -43,8 +52,11 @@ Release jobs are serialized and never cancel an upload already in progress.
 
 ## Acceptance limits
 
-Automated browser checks use a simulated MCP App host. Actual Codex directory
-selection, chat creation, thread-link persistence, navigation, and plugin launch need acceptance in
+Automated browser checks use a simulated MCP App host, including stalled,
+failed, canceled, and timed-out folder requests. macOS uses a local system
+folder chooser; other platforms require host directory-form support.
+Actual Codex directory selection, chat creation, thread-link persistence,
+navigation, and plugin launch need acceptance in
 the target host. A fresh installation on a second machine has not been verified.
 Other operating systems should be treated as unverified until tested.
 

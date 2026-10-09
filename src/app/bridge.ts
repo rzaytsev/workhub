@@ -6,6 +6,7 @@ import {
 } from "@modelcontextprotocol/ext-apps";
 import { OpenAIExtensions } from "@openai/mcp-extensions/app";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
 import { isTaskChatUrl } from "../task-chat.js";
 
 declare global {
@@ -39,7 +40,7 @@ export function initialize(): Promise<void> {
   if (ready) return ready;
   if (window.__TODO_PREVIEW__) return (ready = Promise.resolve());
   document.documentElement.dataset.hosted = "true";
-  app = new App({ name: "workhub", version: "0.9.0" });
+  app = new App({ name: "workhub", version: "0.9.1" });
   extensions = new OpenAIExtensions(app);
   const theme = () => {
     const context = app?.getHostContext();
@@ -56,6 +57,7 @@ export function initialize(): Promise<void> {
 export async function call(
   name: string,
   args: Record<string, unknown>,
+  options?: RequestOptions,
 ): Promise<Data> {
   await initialize();
   let result: CallToolResult;
@@ -67,8 +69,9 @@ export async function call(
         "X-Todo-Token": window.__TODO_PREVIEW__.token,
       },
       body: JSON.stringify({ name, arguments: args }),
+      signal: options?.signal,
     }).then((r) => r.json());
-  } else result = await app!.callServerTool({ name, arguments: args });
+  } else result = await app!.callServerTool({ name, arguments: args }, options);
   if (result.isError)
     throw Error(
       result.content

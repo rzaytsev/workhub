@@ -2,10 +2,14 @@
 """Check the source directory or exact staged contents before publication."""
 
 import argparse
+import hashlib
+import json
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
+import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP = {".git", "node_modules", "dist"}
@@ -15,6 +19,48 @@ MACHINE_PATH = re.compile(r"/(?:Users|home)/[A-Za-z0-9_.-]+/|[A-Za-z]:\\Users\\[
 SECRET = re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|AKIA[A-Z0-9]{16})\b")
 UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
 SYNTHETIC_UUID = re.compile(r"00000000-0000-4000-8000-[0-9a-f]{12}", re.IGNORECASE)
+SCREENSHOT_APPROVALS = Path("docs/screenshots/reviewed.json")
+
+
+def candidate_bytes(relative, staged):
+    if staged:
+        return subprocess.run(["git", "show", f":{relative.as_posix()}"], cwd=ROOT, check=True, capture_output=True).stdout
+    return (ROOT / relative).read_bytes()
+
+
+def screenshot_approvals(staged):
+    try:
+        approvals = json.loads(candidate_bytes(SCREENSHOT_APPROVALS, staged))
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return {}
+    if not isinstance(approvals, dict) or any(
+        not re.fullmatch(r"docs/screenshots/[a-z0-9-]+\.png", path)
+        or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        for path, digest in approvals.items()
+    ):
+        raise ValueError("Invalid screenshot approval manifest")
+    return approvals
+
+
+def reviewed_png(data, digest):
+    if hashlib.sha256(data).hexdigest() != digest or not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return False
+    offset = 8
+    chunks = []
+    while offset + 12 <= len(data):
+        length = struct.unpack_from(">I", data, offset)[0]
+        end = offset + length + 12
+        if end > len(data):
+            return False
+        kind = data[offset + 4:offset + 8]
+        if kind in {b"tEXt", b"zTXt", b"iTXt", b"eXIf"}:
+            return False
+        checksum = struct.unpack_from(">I", data, end - 4)[0]
+        if zlib.crc32(data[offset + 4:end - 4]) != checksum:
+            return False
+        chunks.append(kind)
+        offset = end
+    return offset == len(data) and chunks[:1] == [b"IHDR"] and b"IDAT" in chunks and chunks[-1:] == [b"IEND"]
 
 
 def directory_files(directory):
@@ -40,6 +86,12 @@ def main():
     else:
         paths = list(directory_files(ROOT))
     findings = []
+    try:
+        approvals = screenshot_approvals(args.staged)
+    except (ValueError, TypeError):
+        print("Publication check failed: invalid screenshot approval manifest (content redacted).")
+        return 1
+    approved_images = 0
     for path in paths:
         relative = path.relative_to(ROOT)
         parts = relative.parts
@@ -50,7 +102,13 @@ def main():
         if path.is_symlink() or not path.is_file():
             findings.append(f"{relative}: symlink or nonregular file")
             continue
-        data = subprocess.run(["git", "show", f":{relative.as_posix()}"], cwd=ROOT, check=True, capture_output=True).stdout if args.staged else path.read_bytes()
+        data = candidate_bytes(relative, args.staged)
+        if relative.as_posix() in approvals:
+            if reviewed_png(data, approvals[relative.as_posix()]):
+                approved_images += 1
+            else:
+                findings.append(f"{relative}: screenshot changed, invalid PNG, or embedded metadata; review again")
+            continue
         try:
             text = data.decode("utf8")
         except UnicodeDecodeError:
@@ -65,7 +123,7 @@ def main():
         print("Publication check failed (content redacted):")
         print("\n".join(findings))
         return 1
-    print(f"Publication check passed: {len(paths)} files; no private paths, runtime data, binaries, or credential patterns.")
+    print(f"Publication check passed: {len(paths)} files, {approved_images} reviewed screenshots; no private paths, runtime data, unreviewed binaries, or credential patterns.")
     return 0
 
 
