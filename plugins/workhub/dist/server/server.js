@@ -4552,7 +4552,7 @@ function isRef(value) {
 function cloneIssues(issues) {
   return issues.map((iss) => iss.path ? { ...iss, path: iss.path.slice() } : { ...iss });
 }
-function isRecursive(inst, stack, resolve2) {
+function isRecursive(inst, stack, resolve3) {
   const cached3 = recursive.get(inst);
   if (cached3 !== void 0)
     return cached3 ? PROVEN : NONE;
@@ -4562,7 +4562,7 @@ function isRecursive(inst, stack, resolve2) {
   let result = NONE;
   const check3 = (child) => {
     if (result !== PROVEN && child?._zod) {
-      const answer = isRecursive(child, stack, resolve2);
+      const answer = isRecursive(child, stack, resolve3);
       if (answer > result)
         result = answer;
     }
@@ -4573,7 +4573,7 @@ function isRecursive(inst, stack, resolve2) {
       const desc = Object.getOwnPropertyDescriptor(sh, key);
       if (spread && !desc.enumerable)
         continue;
-      const child = desc.get ? ASSUMED : desc.value?._zod ? isRecursive(desc.value, stack, resolve2) : NONE;
+      const child = desc.get ? ASSUMED : desc.value?._zod ? isRecursive(desc.value, stack, resolve3) : NONE;
       if (child > answer)
         answer = child;
     }
@@ -4637,7 +4637,7 @@ function isRecursive(inst, stack, resolve2) {
       break;
     // `$ZodLazy` caches its inner on the def, so a resolved edge is followed exactly
     case "lazy": {
-      const inner = def._cachedInner ?? (resolve2 ? inst._zod.innerType : void 0);
+      const inner = def._cachedInner ?? (resolve3 ? inst._zod.innerType : void 0);
       merge3(inner ? isRecursive(inner, stack, false) : ASSUMED);
       break;
     }
@@ -23460,7 +23460,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a5 = root.localRefs) === null || _a5 === void 0 ? void 0 : _a5[ref];
         const { schemaId } = this.opts;
@@ -23487,7 +23487,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -24317,7 +24317,7 @@ var require_fast_uri = __commonJS({
       }
       return uri2;
     }
-    function resolve2(baseURI, relativeURI, options) {
+    function resolve3(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const {
         parsed: baseParsed,
@@ -24686,7 +24686,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -35196,7 +35196,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task3.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+        await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error112) {
@@ -35213,7 +35213,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task: task2, relatedTask } = options ?? {};
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const earlyReject = (error112) => {
         reject(error112);
       };
@@ -35291,7 +35291,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve2(parseResult.data);
+            resolve3(parseResult.data);
           }
         } catch (error112) {
           reject(error112);
@@ -35553,12 +35553,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve2, interval);
+      const timeoutId = setTimeout(resolve3, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -36693,7 +36693,7 @@ var McpServer = class {
     let task2 = createTaskResult.task;
     const pollInterval = task2.pollInterval ?? 5e3;
     while (task2.status !== "completed" && task2.status !== "failed" && task2.status !== "cancelled") {
-      await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+      await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
       const updatedTask = await extra.taskStore.getTask(taskId);
       if (!updatedTask) {
         throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -37357,12 +37357,12 @@ var StdioServerTransport = class {
     this.onclose?.();
   }
   send(message) {
-    return new Promise((resolve2) => {
+    return new Promise((resolve3) => {
       const json3 = serializeMessage(message);
       if (this._stdout.write(json3)) {
-        resolve2();
+        resolve3();
       } else {
-        this._stdout.once("drain", resolve2);
+        this._stdout.once("drain", resolve3);
       }
     });
   }
@@ -55288,37 +55288,89 @@ async function execute(store2, name, input2, chooseDirectory2) {
 
 // src/directory-picker.ts
 import { fileURLToPath } from "url";
-import { basename as basename2, dirname as dirname2 } from "path";
-async function chooseDirectory(elicitInput) {
-  const result = await elicitInput({
-    mode: "form",
-    message: "Choose a local workspace or task folder for Workhub.",
-    requestedSchema: {
-      type: "object",
-      properties: {
-        directory: {
-          type: "string",
-          title: "Local folder",
-          format: "uri",
-          "x-openai-input": {
-            type: "file",
-            options: [],
-            userOptions: { kind: "directory" }
-          }
+import { basename as basename2, dirname as dirname2, isAbsolute as isAbsolute2, resolve as resolve2 } from "path";
+import { execFile } from "child_process";
+import { promisify } from "util";
+var execFileAsync = promisify(execFile);
+var pickerTimeout = 12e4;
+var macPickerScript = `
+var app = Application.currentApplication();
+app.includeStandardAdditions = true;
+app.activate();
+try {
+  JSON.stringify(app.chooseFolder({
+    withPrompt: "Choose a workspace or task folder for Workhub."
+  }).toString());
+} catch (error) {
+  if (error.errorNumber === -128) "null";
+  else throw error;
+}
+`;
+async function chooseMacDirectory(signal) {
+  const { stdout } = await execFileAsync(
+    "/usr/bin/osascript",
+    ["-l", "JavaScript", "-e", macPickerScript],
+    { signal, timeout: pickerTimeout, maxBuffer: 64 * 1024 }
+  );
+  return JSON.parse(stdout);
+}
+async function chooseDirectory(elicitInput, options = {}) {
+  const signal = AbortSignal.any([
+    ...options.signal ? [options.signal] : [],
+    AbortSignal.timeout(pickerTimeout)
+  ]);
+  signal.throwIfAborted();
+  let path;
+  if ((options.platform ?? process.platform) === "darwin") {
+    try {
+      path = await (options.nativePicker ?? chooseMacDirectory)(signal);
+    } catch {
+      signal.throwIfAborted();
+      throw Error(
+        "The macOS folder picker could not open. Enter the folder path manually or try Browse again."
+      );
+    }
+    if (path === null) return {};
+  } else {
+    const result = await elicitInput(
+      {
+        mode: "form",
+        message: "Choose a local workspace or task folder for Workhub.",
+        requestedSchema: {
+          type: "object",
+          properties: {
+            directory: {
+              type: "string",
+              title: "Local folder",
+              format: "uri",
+              "x-openai-input": {
+                type: "file",
+                options: [],
+                userOptions: { kind: "directory" }
+              }
+            }
+          },
+          required: ["directory"]
         }
       },
-      required: ["directory"]
-    }
-  });
-  if (result.action !== "accept") return {};
-  const uri2 = result.content?.directory;
-  if (typeof uri2 !== "string" || !uri2.startsWith("file:"))
+      { signal, timeout: pickerTimeout, maxTotalTimeout: pickerTimeout }
+    );
+    if (result.action !== "accept") return {};
+    const uri2 = result.content?.directory;
+    if (typeof uri2 !== "string" || !uri2.startsWith("file:"))
+      throw Error(
+        "The folder picker did not return a local path. Enter the folder path manually."
+      );
+    path = fileURLToPath(uri2);
+  }
+  signal.throwIfAborted();
+  if (typeof path !== "string" || !isAbsolute2(path))
     throw Error(
       "The folder picker did not return a local path. Enter the folder path manually."
     );
-  const path = fileURLToPath(uri2);
-  const suggestedRoot = basename2(path) === "tasks" && basename2(dirname2(path)) === "todo" ? dirname2(dirname2(path)) : dirname2(path);
-  return { path, suggestedRoot };
+  const selectedPath = resolve2(path);
+  const suggestedRoot = basename2(selectedPath) === "tasks" && basename2(dirname2(selectedPath)) === "todo" ? dirname2(dirname2(selectedPath)) : dirname2(selectedPath);
+  return { path: selectedPath, suggestedRoot };
 }
 
 // src/server.ts
@@ -55333,7 +55385,7 @@ var icon = {
 var server = new McpServer({
   name: "workhub",
   title: "Workhub",
-  version: "0.9.0",
+  version: "0.9.1",
   icons: [icon]
 });
 var extensions = new OpenAIExtensions(server);
@@ -55384,7 +55436,7 @@ var titles = {
   todo_create_task: "Create task"
 };
 var descriptions = {
-  todo_choose_directory: "Ask the user to choose a local folder with the host's directory picker. Returns its path and a suggested workspace root; cancellation returns no path. Does not connect or write files. Requires host support for OpenAI directory form fields; manual paths remain supported.",
+  todo_choose_directory: "Ask the user to choose a local folder. Uses the native system dialog on macOS and OpenAI directory form fields on other compatible hosts. Returns its path and a suggested workspace root; cancellation returns no path. Does not connect or write files. Picker requests are cancellable and expire after two minutes; manual paths remain supported.",
   todo_set_accent_color: "Set the Workhub accent color across workspaces. Persists in the local plugin registry; does not change task files. Use default to restore the original purple accent.",
   todo_open: "Open Workhub or list tasks for a connected local workspace. Returns statuses and labels discovered from its Markdown files. Call without projectId to discover workspaces. The projectId argument identifies a workspace root; task area values identify projects such as api or admin. The shared TOML format is editable; legacy YAML is read-only.",
   todo_connect_project: "Connect an existing local workspace root with an optional taskDirectory inside it (relative or absolute). Defaults to todo; existing nested todo/tasks folders remain supported. TOML tasks are editable in either layout; legacy YAML is browse-only. A missing task folder returns needsTodoCreation without writes. After explicit user approval, retry with that canonical root and taskDirectory and createTodo: true to create the empty folder. Archive is created on first approved archive inside the selected folder (legacy todo/tasks uses todo/archive).",
@@ -55427,13 +55479,13 @@ for (const name of Object.keys(schemas)) {
         }
       }
     },
-    async (args) => {
+    async (args, extra) => {
       try {
         const data = await execute(
           store,
           name,
           args,
-          () => chooseDirectory(extensions.elicitInput)
+          () => chooseDirectory(extensions.elicitInput, { signal: extra.signal })
         );
         return {
           content: [

@@ -2404,10 +2404,10 @@ function Workspace() {
                 <p className="help-note">
                   Single-letter shortcuts work outside text fields. Text editors
                   keep their typing undo. File undo lasts for this session and
-                  preserves newer external edits. Returning to Workhub
-                  refreshes files automatically and keeps unsaved drafts.
-                  Refresh also reloads edits made elsewhere. Legacy YAML
-                  projects support browsing until upgraded.
+                  preserves newer external edits. Returning to Workhub refreshes
+                  files automatically and keeps unsaved drafts. Refresh also
+                  reloads edits made elsewhere. Legacy YAML projects support
+                  browsing until upgraded.
                 </p>
               </div>
             ) : dialog === "archiveDone" ? (
@@ -2506,14 +2506,20 @@ function Workspace() {
             ) : dialog === "connect" ? (
               <ConnectForm
                 busy={busy}
-                onChooseDirectory={async () => {
-                  let selected:
-                    { path: string; suggestedRoot: string } | undefined;
-                  await act(async () => {
-                    const data = await call("todo_choose_directory", {});
-                    if (data.path) selected = data as typeof selected;
-                  });
-                  return selected;
+                onChooseDirectory={async (signal) => {
+                  const data = await call(
+                    "todo_choose_directory",
+                    {},
+                    {
+                      signal,
+                      timeout: 125_000,
+                      maxTotalTimeout: 125_000,
+                      resetTimeoutOnProgress: false,
+                    },
+                  );
+                  return data.path
+                    ? (data as { path: string; suggestedRoot: string })
+                    : undefined;
                 }}
                 onSubmit={async (values) => {
                   let creation: TodoCreation | undefined;
@@ -2851,14 +2857,75 @@ function ConnectForm({
   onSubmit: (
     values: Record<string, unknown>,
   ) => Promise<TodoCreation | undefined>;
-  onChooseDirectory: () => Promise<
-    { path: string; suggestedRoot: string } | undefined
-  >;
+  onChooseDirectory: (
+    signal: AbortSignal,
+  ) => Promise<{ path: string; suggestedRoot: string } | undefined>;
 }) {
   const [path, setPath] = useState("");
   const [name, setName] = useState("");
   const [taskDirectory, setTaskDirectory] = useState("");
   const [creation, setCreation] = useState<TodoCreation>();
+  const picker = useRef<AbortController | null>(null);
+  const [picking, setPicking] = useState<"workspace" | "task" | null>(null);
+  const [pickerError, setPickerError] = useState("");
+  useEffect(
+    () => () => {
+      picker.current?.abort();
+      picker.current = null;
+    },
+    [],
+  );
+  function cancelPicker() {
+    const current = picker.current;
+    picker.current = null;
+    current?.abort();
+    setPicking(null);
+  }
+  async function browse(target: "workspace" | "task") {
+    if (busy || picker.current) return;
+    const controller = new AbortController();
+    picker.current = controller;
+    setPicking(target);
+    setPickerError("");
+    const timer = window.setTimeout(
+      () =>
+        controller.abort(
+          Error(
+            "Folder picker timed out. Enter the path manually or try Browse again.",
+          ),
+        ),
+      120_000,
+    );
+    try {
+      const selected = await onChooseDirectory(controller.signal);
+      if (
+        picker.current !== controller ||
+        controller.signal.aborted ||
+        !selected
+      )
+        return;
+      if (target === "workspace") setPath(selected.path);
+      else {
+        setTaskDirectory(selected.path);
+        if (!path) setPath(selected.suggestedRoot);
+      }
+    } catch (error) {
+      if (picker.current === controller) {
+        const reason = controller.signal.aborted
+          ? controller.signal.reason
+          : error;
+        setPickerError(
+          reason instanceof Error ? reason.message : String(reason),
+        );
+      }
+    } finally {
+      window.clearTimeout(timer);
+      if (picker.current === controller) {
+        picker.current = null;
+        setPicking(null);
+      }
+    }
+  }
   if (creation)
     return (
       <div className="todo-create-confirmation">
@@ -2904,6 +2971,7 @@ function ConnectForm({
     <form
       onSubmit={(e) => {
         e.preventDefault();
+        cancelPicker();
         void onSubmit({
           path,
           name,
@@ -2939,20 +3007,22 @@ function ConnectForm({
           disabled={busy}
           value={path}
           placeholder="~/projects/my-project"
-          onChange={(e) => setPath(e.target.value)}
+          onChange={(e) => {
+            cancelPicker();
+            setPath(e.target.value);
+          }}
         />
       </label>
       <button
         type="button"
         className="browse-folder"
-        disabled={busy}
-        onClick={() =>
-          void onChooseDirectory().then((selected) => {
-            if (selected) setPath(selected.path);
-          })
-        }
+        disabled={busy || picking !== null}
+        onClick={() => void browse("workspace")}
       >
-        <Icon name="folder" size={16} /> Browse workspace
+        <Icon name="folder" size={16} />{" "}
+        {picking === "workspace"
+          ? "Opening folder picker…"
+          : "Browse workspace"}
       </button>
       <label>
         Task folder
@@ -2960,23 +3030,34 @@ function ConnectForm({
           disabled={busy}
           value={taskDirectory}
           placeholder="todo (default)"
-          onChange={(e) => setTaskDirectory(e.target.value)}
+          onChange={(e) => {
+            cancelPicker();
+            setTaskDirectory(e.target.value);
+          }}
         />
       </label>
       <button
         type="button"
         className="browse-folder"
-        disabled={busy}
-        onClick={() =>
-          void onChooseDirectory().then((selected) => {
-            if (!selected) return;
-            setTaskDirectory(selected.path);
-            if (!path) setPath(selected.suggestedRoot);
-          })
-        }
+        disabled={busy || picking !== null}
+        onClick={() => void browse("task")}
       >
-        <Icon name="folder" size={16} /> Browse task folder
+        <Icon name="folder" size={16} />{" "}
+        {picking === "task" ? "Opening folder picker…" : "Browse task folder"}
       </button>
+      {picking && (
+        <div className="folder-picker-pending" role="status">
+          <span>Choose a folder in the system dialog.</span>
+          <button type="button" onClick={cancelPicker}>
+            Cancel browse
+          </button>
+        </div>
+      )}
+      {pickerError && (
+        <div className="folder-picker-error" role="alert">
+          {pickerError}
+        </div>
+      )}
       <div className="format-note">
         Use <code>todo/</code> or another folder inside your workspace. Existing
         <code> todo/tasks/</code> layouts still work. TOML tasks are editable;

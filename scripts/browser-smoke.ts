@@ -1335,13 +1335,14 @@ try {
   });
   onboardingPage.on("pageerror", (e) => errors.push(e.message));
   let pickedFolder: { path?: string; suggestedRoot?: string } = {};
+  let pickerResponse = async () => pickedFolder;
   await onboardingPage.exposeFunction(
     "runTodoTool",
     async (name: string, args: Record<string, unknown>) => {
       try {
         const data =
           name === "todo_choose_directory"
-            ? pickedFolder
+            ? await pickerResponse()
             : await execute(onboardingStore, name, args);
         return { content: [], structuredContent: data };
       } catch (error) {
@@ -1417,6 +1418,90 @@ try {
   await expect(
     firstRunUi.getByLabel("Local workspace path", { exact: true }),
   ).toHaveValue(emptyWorkspace);
+  // A missing host dialog must never lock the form, and late replies must not
+  // replace manual input or a newly opened connection form.
+  let finishPick: (result: typeof pickedFolder) => void = () => {};
+  function stallPicker() {
+    const response = new Promise<typeof pickedFolder>((resolve) => {
+      finishPick = resolve;
+    });
+    pickerResponse = () => response;
+  }
+  const browseWorkspace = firstRunUi.getByRole("button", {
+    name: "Browse workspace",
+    exact: true,
+  });
+  const workspacePath = firstRunUi.getByLabel("Local workspace path", {
+    exact: true,
+  });
+  const pendingPicker = firstRunUi.locator(".folder-picker-pending");
+  stallPicker();
+  await browseWorkspace.click();
+  await expect(pendingPicker).toBeVisible();
+  await expect(workspacePath).toBeEnabled();
+  await expect(
+    firstRunUi.getByLabel("Workspace name", { exact: true }),
+  ).toBeEnabled();
+  await expect(
+    firstRunUi.getByLabel("Task folder", { exact: true }),
+  ).toBeEnabled();
+  await expect(
+    firstRunUi.getByRole("button", { name: "Close dialog" }),
+  ).toBeEnabled();
+  await expect(
+    firstRunUi
+      .getByRole("dialog")
+      .getByRole("button", { name: "Connect workspace" }),
+  ).toBeEnabled();
+  await onboardingPage.screenshot({
+    path: join(screenshots, "picker-pending-preview.png"),
+  });
+  await firstRunUi.getByRole("button", { name: "Cancel browse" }).click();
+  finishPick({ path: roots[0], suggestedRoot: temporary });
+  await expect(browseWorkspace).toBeEnabled();
+  await expect(workspacePath).toHaveValue(emptyWorkspace);
+  pickerResponse = async () => {
+    throw Error(
+      "The folder picker could not open. Enter the folder path manually.",
+    );
+  };
+  await browseWorkspace.click();
+  await expect(firstRunUi.getByRole("dialog").getByRole("alert")).toContainText(
+    "manually",
+  );
+  await expect(browseWorkspace).toBeEnabled();
+  stallPicker();
+  await browseWorkspace.click();
+  await expect(pendingPicker).toBeVisible();
+  await workspacePath.fill(roots[1]);
+  finishPick({ path: roots[0], suggestedRoot: temporary });
+  await expect(browseWorkspace).toBeEnabled();
+  await expect(workspacePath).toHaveValue(roots[1]);
+  stallPicker();
+  await browseWorkspace.click();
+  await expect(pendingPicker).toBeVisible();
+  await workspacePath.press("Escape");
+  await expect(firstRunUi.getByRole("dialog")).toHaveCount(0);
+  await startPage.getByRole("button", { name: "Connect workspace" }).click();
+  finishPick({ path: roots[0], suggestedRoot: temporary });
+  await expect(workspacePath).toHaveValue("");
+  await onboardingPage.clock.install();
+  stallPicker();
+  await browseWorkspace.click();
+  await expect(pendingPicker).toBeVisible();
+  await onboardingPage.clock.fastForward(120_100);
+  await expect(firstRunUi.getByRole("dialog").getByRole("alert")).toContainText(
+    "timed out",
+  );
+  await expect(browseWorkspace).toBeEnabled();
+  finishPick({ path: roots[0], suggestedRoot: temporary });
+  await expect(workspacePath).toHaveValue("");
+  await onboardingPage.clock.resume();
+  pickerResponse = async () => pickedFolder;
+  await firstRunUi
+    .getByLabel("Workspace name", { exact: true })
+    .fill("Starter project");
+  await workspacePath.fill(emptyWorkspace);
   await onboardingPage.screenshot({
     path: join(screenshots, "connect-folders-preview.png"),
   });
@@ -1517,7 +1602,7 @@ try {
   await onboardingPage.close();
   expect(errors).toEqual([]);
   process.stdout.write(
-    "MCP App host: first-run guidance, folder selection and confirmed flat/custom-folder creation, Workhub branding, compact filter header, fresh initial/read timestamps, persistent accent colors with keyboard and dark theme, initial/live host fonts, safe card titles, left-aligned list labels, multi-label checkbox filters, sidebar project lists, focus refresh with draft race protection, draggable/keyboard panel resizing, completed defaults, Help, archive/undo, menus, task references, workspace isolation, chat requests, draft protection and narrow layout passed\n",
+    "MCP App host: first-run guidance, stalled/failed/cancelled/timed-out folder pickers with late-reply protection, folder selection and confirmed flat/custom-folder creation, Workhub branding, compact filter header, fresh initial/read timestamps, persistent accent colors with keyboard and dark theme, initial/live host fonts, safe card titles, left-aligned list labels, multi-label checkbox filters, sidebar project lists, focus refresh with draft race protection, draggable/keyboard panel resizing, completed defaults, Help, archive/undo, menus, task references, workspace isolation, chat requests, draft protection and narrow layout passed\n",
   );
 } finally {
   await browser.close();

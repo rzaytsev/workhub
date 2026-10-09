@@ -1,6 +1,6 @@
 {
   "name": "workhub",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Manage local Markdown task files across workspaces and projects, with a tree and kanban board.",
   "license": "MIT",
   "skills": "./skills/",
