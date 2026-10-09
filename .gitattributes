@@ -1,0 +1,4 @@
+* text=auto
+plugins/workhub/dist/** -whitespace
+docs/third-party-notices.md -whitespace
+plugins/workhub/THIRD_PARTY_NOTICES.md -whitespace

@@ -1,0 +1,11 @@
+node_modules/
+/dist/
+.local/
+test-results/
+.DS_Store
+.trigger-tree/
+.env
+.env.*
+!.env.example
+*.log
+coverage/

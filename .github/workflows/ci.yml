@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: python3 scripts/check-publication.py --staged
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run smoke
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - run: npm run check:publication
+      - run: git diff --exit-code -- plugins/workhub docs/third-party-notices.md
+
+  release:
+    needs: validate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: workhub-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Package and publish the validated version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(python3 -c 'import json, re; v=json.load(open("package.json"))["version"]; assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", v), "Expected a numeric release version"; print(v)')
+          tag="v$version"
+          asset="workhub-$version.zip"
+          if gh release view "$tag" --json isDraft,assets > "$RUNNER_TEMP/release.json"; then
+            python3 - "$RUNNER_TEMP/release.json" "$asset" <<'PY'
+          import json, sys
+          release = json.load(open(sys.argv[1]))
+          assert not release["isDraft"], "An unfinished draft requires manual review"
+          assert any(a["name"] == sys.argv[2] for a in release["assets"]), "Existing release is missing its ZIP"
+          PY
+            echo "$tag is already published; bump package.json for a new release."
+            exit 0
+          fi
+          if git rev-parse --verify "$tag" >/dev/null 2>&1; then
+            test "$(git rev-parse "$tag^{commit}")" = "$GITHUB_SHA" || {
+              echo "Existing tag points to another commit; refusing to publish."
+              exit 1
+            }
+          fi
+          python3 scripts/check-publication.py --staged
+          git archive --format=zip --prefix=workhub/ --output="$RUNNER_TEMP/$asset" "$GITHUB_SHA"
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          Experimental Workhub plugin for local Markdown tasks, under MIT.
+
+          Download and extract the ZIP, then run these commands inside `workhub/`:
+
+          ```sh
+          codex plugin marketplace add .
+          codex plugin add workhub@workhub
+          ```
+
+          Requires Node.js 22.12 or newer on Codex's PATH. The ZIP includes the
+          bundled server and UI, marketplace, todo skill, and license notices.
+          Restart Codex or open a new chat after installation.
+
+          Published after type, unit, build, isolated MCP, browser, privacy,
+          and generated-artifact checks. Browser checks simulate the MCP App host;
+          native Codex chat behavior and second-machine installation remain unverified.
+          NOTES
+          gh release create "$tag" "$RUNNER_TEMP/$asset" \
+            --target "$GITHUB_SHA" --title "Workhub $version" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" --prerelease

@@ -1,0 +1,20 @@
+{
+  "name": "workhub",
+  "interface": {
+    "displayName": "Workhub"
+  },
+  "plugins": [
+    {
+      "name": "workhub",
+      "source": {
+        "source": "local",
+        "path": "./plugins/workhub"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

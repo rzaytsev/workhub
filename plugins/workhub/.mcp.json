@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "workhub": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/dist/server/server.js"
+      ]
+    }
+  }
+}
